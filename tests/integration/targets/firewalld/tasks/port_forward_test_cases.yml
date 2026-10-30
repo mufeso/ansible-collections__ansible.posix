@@ -62,3 +62,76 @@
   ansible.builtin.assert:
     that:
       - result is not changed
+
+- name: Firewalld port forward test to a first address (permanent and immediate)
+  ansible.posix.firewalld:
+    port_forward:
+      - port: 514
+        proto: udp
+        toport: 514
+        toaddr: 192.0.2.10
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Firewalld port forward test with a new address for the same port and protocol
+  ansible.posix.firewalld:
+    port_forward:
+      - port: 514
+        proto: udp
+        toport: 514
+        toaddr: 192.0.2.20
+    permanent: true
+    immediate: true
+    state: enabled
+  register: result
+
+- name: Assert the forward was changed
+  ansible.builtin.assert:
+    that:
+      - result is changed
+
+- name: Firewalld port forward test with the new address rerun (verify not changed)
+  ansible.posix.firewalld:
+    port_forward:
+      - port: 514
+        proto: udp
+        toport: 514
+        toaddr: 192.0.2.20
+    permanent: true
+    immediate: true
+    state: enabled
+  register: result
+
+- name: Assert the rerun was not changed
+  ansible.builtin.assert:
+    that:
+      - result is not changed
+
+- name: Read the permanent and runtime forwards
+  ansible.builtin.command: "firewall-cmd {{ item }} --list-forward-ports"
+  loop:
+    - "--permanent"
+    - ""
+  register: forwards
+  changed_when: false
+
+- name: Assert only the new forward is left for 514/udp
+  ansible.builtin.assert:
+    that:
+      - item.stdout_lines | select('search', '^port=514:proto=udp:') | list | length == 1
+      - "'port=514:proto=udp:toport=514:toaddr=192.0.2.20' in item.stdout_lines"
+  loop: "{{ forwards.results }}"
+  loop_control:
+    label: "{{ item.item | default('runtime', true) }}"
+
+- name: Firewalld port forward test cleanup
+  ansible.posix.firewalld:
+    port_forward:
+      - port: 514
+        proto: udp
+        toport: 514
+        toaddr: 192.0.2.20
+    permanent: true
+    immediate: true
+    state: disabled
